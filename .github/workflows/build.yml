@@ -4,12 +4,8 @@ on:
     inputs:
       REPO:
         description: 'Kernel repository'
-        default: 'anggitmrt87/kernel_xiaomi_citrus_sm6115'
+        default: 'slakkystar/kernel_xiaomi_citrus_sm6115'
         required: true
-      USE_PRIVATE_REPO:
-        description: 'Use Private Repository'
-        type: boolean
-        default: false
       BRANCH:
         description: 'Kernel branch'
         default: '13.0.0-perf'
@@ -73,12 +69,7 @@ jobs:
 
     - name: Clone kernel source
       if: inputs.UPDATE_TOOLCHAIN != 'true'
-      run: |
-        if [[ "${{ inputs.USE_PRIVATE_REPO }}" == "true" ]]; then
-          git clone --depth=1 --single-branch -b ${{ inputs.BRANCH }} ${{ secrets.REPO_TOKEN }} kernel_root
-        else
-          git clone --depth=1 --single-branch -b ${{ inputs.BRANCH }} https://github.com/${{ inputs.REPO }} kernel_root
-        fi
+      run: git clone --depth=1 --single-branch -b ${{ inputs.BRANCH }} https://github.com/${{ inputs.REPO }} kernel_root
 
     - name: Cache Toolchain
       id: cache-toolchain
@@ -119,29 +110,9 @@ jobs:
         TOOLCHAIN_URL: ${{ inputs.TOOLCHAIN_URL }}
       run: bash ./build.sh --fetch-toolchains
 
-    - name: Send Telegram notifier
-      if: inputs.UPDATE_TOOLCHAIN != 'true'
-      continue-on-error: true
-      uses: appleboy/telegram-action@master
-      with:
-          to: ${{ secrets.TG_CHAT_ID }}
-          token: ${{ secrets.TG_TOKEN }}
-          message: |
-            Build started!
-            RELEASE: ${{ inputs.BUILD_RELEASE }}
-
-            Repository: ${{ inputs.REPO }}
-            Branch: ${{ inputs.BRANCH }}
-            Device: ${{ inputs.DEVICE_TARGET }}
-            Date: ${{ steps.buildKernel.outputs.currDate }}
-            KernelSU: ${{ inputs.KSU }}
-            Workaround: ${{ inputs.APPLY_WORKAROUND }}
-
     - name: Build Kernel
       if: inputs.UPDATE_TOOLCHAIN != 'true'
       env:
-        TG_TOKEN: ${{ secrets.TG_TOKEN }}
-        TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         DEVICE_TARGET: ${{ inputs.DEVICE_TARGET }}
         APPLY_WORKAROUND: ${{ inputs.APPLY_WORKAROUND }}
         KSU: ${{ inputs.KSU }}
@@ -165,7 +136,7 @@ jobs:
       with:
         name: Kernel-${{ steps.buildKernel.outputs.buildDetails }}
         path: |
-          kernel_root/out/arch/arm64/boot/Image.gz
+          kernel_root/*.zip
           kernel_root/out/.config
 
     - name: Upload to GitHub Release
@@ -177,5 +148,3 @@ jobs:
         name: Kernel ${{ steps.buildKernel.outputs.buildDetails }}
         draft: false
         prerelease: ${{ inputs.BUILD_RELEASE == 'false' }}
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

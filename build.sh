@@ -3,12 +3,11 @@
 set -e
 
 SECONDS=0
-USER="anggit86"
+USER="slakkystar"
 HOSTNAME="github"
 DEVICE_TARGET=${DEVICE_TARGET:-"chime"}
 TC_DIR="$HOME/clang-22"
 OUT_DIR="$(pwd)/out"
-COMP_LOG="$OUT_DIR/compilation.log"
 KCFLAGS_W=${KCFLAGS_W:-"false"}
 CCACHE_DIR="${HOME}/.ccache"
 CCACHE_SIZE=${CCACHE_SIZE:-"5G"}
@@ -24,39 +23,6 @@ msg() { echo -e "${blue}INFO: ${reset}$1"; }
 error() {
     echo -e "${red}ERROR: ${reset}$1"
     exit 1
-}
-
-send_telegram() {
-    local file="$1"
-    local md5="$2"
-    local total_seconds="$3"
-    local status="$4"
-    local CC="$5"
-
-    local h=$((total_seconds / 3600))
-    local m=$(( (total_seconds % 3600) / 60 ))
-    local s=$((total_seconds % 60))
-
-    if [[ -z "$TG_TOKEN" || -z "$TG_CHAT_ID" ]]; then
-        msg "Telegram credentials missing. Skipping upload."
-        return
-    fi
-
-    CC_VERSION=$($CC -v 2>&1 | grep ' version ' | sed 's/[[:space:]]*$//')
-
-    local msg_bar="build $status in ${h}h ${m}m ${s}s
-Device: <code>${DEVICE_TARGET}</code>
-Compiler: $CC_VERSION
-md5: <code>${md5}</code>"
-
-    msg "Uploading to Telegram..."
-    curl -s -F document=@"$file" "https://api.telegram.org/bot$TG_TOKEN/sendDocument" \
-        -F chat_id="$TG_CHAT_ID" \
-        -F "disable_web_page_preview=true" \
-        -F "parse_mode=HTML" \
-        -F caption="$msg_bar"
-    
-    msg "Upload completed!"
 }
 
 merge_kernel_configs() {
@@ -121,7 +87,6 @@ setup_toolchain() {
 
 regen_defconfig() {
     msg "Generating minimal defconfig for $DEVICE_TARGET..."
-    # Prepare merged config first
     prepare_config
     make $BUILD_FLAGS savedefconfig
     cp "$OUT_DIR/defconfig" "$OUT_DIR/${DEVICE_TARGET}_defconfig"
@@ -129,7 +94,6 @@ regen_defconfig() {
 }
 
 prepare_config() {
-    # Determine base defconfig and fragments based on DEVICE_TARGET
     local base_defconfig=""
     local fragments=()
 
@@ -148,17 +112,15 @@ prepare_config() {
             ;;
     esac
 
-    # KernelSU
     if [[ "$KSU" == "true" ]]; then
         if [[ -f "arch/arm64/configs/vendor/kernelsu.config" ]]; then
-            msg "KernelSU enable"
+            msg "KernelSU enabled"
             fragments+=("arch/arm64/configs/vendor/kernelsu.config")
         else
             msg "WARNING: kernelsu.config not found, KernelSU fragment skipped."
         fi
     fi
 
-    # Workaround (disable thermal)
     if [[ "$APPLY_WORKAROUND" == "true" ]]; then
         local therm_disable="$OUT_DIR/disable-thermal.config"
         mkdir -p "$OUT_DIR"
@@ -193,14 +155,11 @@ case "$1" in
     exit 0
     ;;
 "--regen-defconfig")
-    # We'll handle below
     ;;
 *)
-    # Normal build
     ;;
 esac
 
-# Validate device
 VALID_DEVICES=("chime" "lime" "citrus" "bengal-perf" "bengal-stock")
 if [[ ! " ${VALID_DEVICES[@]} " =~ " ${DEVICE_TARGET} " ]]; then
     error "Invalid DEVICE_TARGET='$DEVICE_TARGET'. Valid: ${VALID_DEVICES[*]}"
@@ -213,21 +172,12 @@ export LD_LIBRARY_PATH="$TC_DIR/lib"
 export LLVM_IAS=1
 export LLVM=1
 
-msg "KCFLAGS=-w is $KCFLAGS_W"
-
-if [ "$LLVM" == "1" ]; then
-    __CC="$TC_DIR/bin/clang"
-else
-    __CC=$(find "$TC_DIR/bin" -name "aarch64-*-gcc" -type f | head -n 1)
-fi
-
 [ "$KCFLAGS_W" = "true" ] && export KCFLAGS=-w
 
 COMMIT_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "untracked")
 [ -z "$CI_ZIPNAME" ] && ZIPNAME="$DEVICE_TARGET-$(date '+%Y%m%d-%H%M')-$COMMIT_HASH.zip" || ZIPNAME=$CI_ZIPNAME
 BUILD_FLAGS="O=$OUT_DIR ARCH=arm64 -j$(nproc --all)"
 
-# If regen, do it and exit
 if [ "$1" = "--regen-defconfig" ]; then
     mkdir -p "$OUT_DIR"
     prepare_config
@@ -235,7 +185,6 @@ if [ "$1" = "--regen-defconfig" ]; then
     exit 0
 fi
 
-# Normal build flow
 mkdir -p "$OUT_DIR"
 
 if [ "$CLEAN_BUILD" = "true" ]; then
@@ -244,7 +193,6 @@ if [ "$CLEAN_BUILD" = "true" ]; then
     mkdir -p "$OUT_DIR"
 fi
 
-# Setup ccache
 export CCACHE_DIR="$CCACHE_DIR"
 ccache -M "$CCACHE_SIZE"
 export CCACHE_SLOPPINESS="time_macros"
@@ -254,13 +202,7 @@ msg "Starting compilation for $DEVICE_TARGET..."
 prepare_config
 
 msg "Building kernel..."
-make $BUILD_FLAGS 2>&1 | tee -a "$COMP_LOG"
-# Check build success
-if [ ${PIPESTATUS[0]} -ne 0 ]; then
-    error "Compilation failed!"
-    send_telegram "$COMP_LOG" "$(md5sum $COMP_LOG | cut -d' ' -f1)" "$SECONDS" "failed" "$__CC"
-    exit 1
-fi
+make $BUILD_FLAGS
 
 if [ -f "$OUT_DIR/arch/arm64/boot/Image.gz" ]; then
     msg "Kernel compiled successfully! Packaging..."
@@ -276,14 +218,8 @@ if [ -f "$OUT_DIR/arch/arm64/boot/Image.gz" ]; then
 
     MD5_CHECK=$(md5sum "$ZIPNAME" | cut -d' ' -f1)
 
-    send_telegram "$(pwd)/$ZIPNAME" "$MD5_CHECK" "$SECONDS" "success" "$__CC"
-
-    [ "$DO_CLEAN" = "true" ] && rm -rf AnyKernel3 "$OUT_DIR/arch/arm64/boot"
-
     echo -e "\n${green}Build completed in $((SECONDS / 60)) minute(s)!${reset}"
     msg "Output Zip: $ZIPNAME (md5: $MD5_CHECK)"
 else
     error "Compilation failed!"
-    send_telegram "$COMP_LOG" "$(md5sum $COMP_LOG | cut -d' ' -f1)" "$SECONDS" "failed" "$__CC"
-    exit 1
 fi
