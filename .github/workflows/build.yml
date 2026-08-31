@@ -8,21 +8,17 @@ on:
         required: true
       BRANCH:
         description: 'Kernel branch'
-        default: '13.0.0-perf'
+        default: 'android16'
         required: true
       DEVICE_TARGET:
         description: 'Device to build'
+        type: string
         default: 'chime'
-        type: choice
-        options: [chime, lime, citrus, bengal-perf, bengal-stock]
-      KSU:
-        description: 'Add KernelSU support'
+        required: true
+      KSUN:
+        description: 'Add KernelSU-Next support'
         type: boolean
         default: false
-      KSU_BRANCH:
-        description: 'KernelSU branch'
-        required: true
-        default: 'main'
       APPLY_WORKAROUND:
         description: 'Disable Thermal Configs'
         type: boolean
@@ -38,23 +34,20 @@ on:
       KCFLAGS_W:
         description: 'Enable KCFLAGS=-w'
         type: boolean
-        default: false
+        default: true
       TOOLCHAIN_URL:
         description: 'Custom Clang toolchain URL (leave empty for default)'
         required: false
         default: ''
-      CCACHE_SIZE:
-        description: 'ccache max size (e.g., 5G, 10G)'
-        required: false
-        default: '5G'
-      CLEAN_BUILD:
-        description: 'Clean output before build'
-        type: boolean
-        default: false
       UPLOAD_RELEASE:
         description: 'Upload final zip to GitHub Releases'
         type: boolean
         default: false
+      ANDROID_VER:
+        description: 'Type custom Android version for localversion'
+        type: string
+        default: 'android16'
+        required: true
 
 jobs:
   build:
@@ -69,7 +62,7 @@ jobs:
 
     - name: Clone kernel source
       if: inputs.UPDATE_TOOLCHAIN != 'true'
-      run: git clone --depth=1 --single-branch -b ${{ inputs.BRANCH }} https://github.com/${{ inputs.REPO }} kernel_root
+      run: git clone --single-branch -b ${{ inputs.BRANCH }} https://github.com/${{ inputs.REPO }} kernel_root
 
     - name: Cache Toolchain
       id: cache-toolchain
@@ -93,15 +86,8 @@ jobs:
       id: buildKernel
       run: |
         cd kernel_root
-        gitsha1=$(git rev-parse --short HEAD)
-        CODENAME=$(cat ../codename || echo "kernel")
-
-        if [[ "${{ inputs.BUILD_RELEASE }}" = "false" ]]; then
-          echo "buildDetails=$CODENAME-${{ inputs.DEVICE_TARGET }}-$(date +%Y%m%d)_${gitsha1}-NIGHTLY" >> $GITHUB_OUTPUT
-        else
-          echo "buildDetails=$CODENAME-${{ inputs.DEVICE_TARGET }}-$(date +%Y%m%d)_${gitsha1}" >> $GITHUB_OUTPUT
-        fi
-        echo "currDate=$(date)" >> $GITHUB_OUTPUT
+        KERNELCODE=$(cat ../codename 2>/dev/null || echo "kernel")
+        echo "KERNELCODE=$KERNELCODE" >> $GITHUB_ENV
 
     - name: Fetch Toolchains
       if: steps.cache-toolchain.outputs.cache-hit != 'true' || inputs.UPDATE_TOOLCHAIN == 'true'
@@ -115,26 +101,35 @@ jobs:
       env:
         DEVICE_TARGET: ${{ inputs.DEVICE_TARGET }}
         APPLY_WORKAROUND: ${{ inputs.APPLY_WORKAROUND }}
-        KSU: ${{ inputs.KSU }}
-        CI_ZIPNAME: "${{ steps.buildKernel.outputs.buildDetails }}.zip"
+        KSUN: ${{ inputs.KSUN }}
         KCFLAGS_W: "${{ inputs.KCFLAGS_W }}"
         TOOLCHAIN_URL: "${{ inputs.TOOLCHAIN_URL }}"
-        CCACHE_SIZE: "${{ inputs.CCACHE_SIZE }}"
-        CLEAN_BUILD: "${{ inputs.CLEAN_BUILD }}"
+        CCACHE_SIZE: "7.5G"
+        CLEAN_BUILD: "false"
+        ANDROID_VER: "${{ inputs.ANDROID_VER }}"
       run: |
-        cd kernel_root
         if [ ! -d ~/.ccache ]; then
           mkdir -p ~/.ccache
         fi
-        if [[ "$KSU" == "true" ]]; then
-          curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/main/kernel/setup.sh" | bash -s ${{ inputs.KSU_BRANCH }}
+
+        cd kernel_root
+
+        if [[ "$KSUN" == "true" ]]; then
+          export IS_KSUN_ENABLED=true
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
+          
+          if [ -f "../ksu_manual_hooks_v2.2.patch" ]; then
+            git apply ../ksu_manual_hooks_v2.2.patch || patch -p1 < ../ksu_manual_hooks_v2.2.patch
+          fi
         fi
+
         bash ../build.sh
 
     - name: Upload kernel artifacts
       uses: actions/upload-artifact@v5
       with:
-        name: Kernel-${{ steps.buildKernel.outputs.buildDetails }}
+        name: Kernel-${{ inputs.DEVICE_TARGET }}
+        include-hidden-files: true
         path: |
           kernel_root/*.zip
           kernel_root/out/.config
@@ -143,8 +138,8 @@ jobs:
       if: inputs.UPLOAD_RELEASE == 'true' && inputs.UPDATE_TOOLCHAIN != 'true'
       uses: softprops/action-gh-release@v2
       with:
-        files: kernel_root/${{ steps.buildKernel.outputs.buildDetails }}.zip
-        tag_name: ${{ steps.buildKernel.outputs.buildDetails }}
-        name: Kernel ${{ steps.buildKernel.outputs.buildDetails }}
+        files: kernel_root/*.zip
+        tag_name: "build-${{ github.run_number }}"
+        name: "Kernel Build #${{ github.run_number }}"
         draft: false
         prerelease: ${{ inputs.BUILD_RELEASE == 'false' }}
