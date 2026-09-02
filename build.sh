@@ -14,6 +14,8 @@ CCACHE_SIZE=${CCACHE_SIZE:-"7.5G"}
 CLEAN_BUILD=${CLEAN_BUILD:-"false"}
 KERNELCODE="${KERNELCODE:-"OPlus-kernel"}"
 ANDROID_VER="${ANDROID_VER:-"android16"}"
+RSU="${RSU:-"true"}"
+SUSFS="${SUSFS:-"true"}"
 
 export TERM=xterm
 red='\033[0;31m'
@@ -91,6 +93,21 @@ prepare_config() {
     local base_defconfig="chime_defconfig"
     local fragments=()
 
+    if [[ "$SUSFS" == "true" && "$RSU" != "true" ]]; then
+        msg "Error: To use SUSFS, you must also enable RSU." >&2
+        exit 1
+    fi
+
+    if [[ "$RSU" == "true" ]]; then
+        msg "RSU enabled: adding vendor/resukisu.config fragment"
+        fragments+=("arch/arm64/configs/vendor/resukisu.config")
+    fi
+
+    if [[ "$SUSFS" == "true" ]]; then
+        msg "SuSFS enabled: adding vendor/susfs.config fragment"
+        fragments+=("arch/arm64/configs/vendor/susfs.config")
+    fi
+
     if [[ "$APPLY_WORKAROUND" == "true" ]]; then
         local therm_disable="$OUT_DIR/disable-thermal.config"
         mkdir -p "$OUT_DIR"
@@ -147,8 +164,8 @@ COMMIT_COUNT=$(git rev-list --count HEAD 2>/dev/null || echo "0")
 COMMIT_HASH_12=$(git rev-parse --short=12 HEAD 2>/dev/null || echo "untracked")
 COMMIT_HASH_SHORT=$(git rev-parse --short HEAD 2>/dev/null || echo "untracked")
 
-if [ "$IS_KSUN_ENABLED" = "true" ]; then
-    ZIPNAME="$KERNELCODE-KSU-$(date '+%Y%m%d-%H%M')-$COMMIT_HASH_SHORT.zip"
+if [ "$IS_RSU_ENABLED" = "true" ]; then
+    ZIPNAME="$KERNELCODE-RSU-$(date '+%Y%m%d-%H%M')-$COMMIT_HASH_SHORT.zip"
 else
     ZIPNAME="$KERNELCODE-vanilla-$(date '+%Y%m%d-%H%M')-$COMMIT_HASH_SHORT.zip"
 fi

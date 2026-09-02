@@ -15,10 +15,14 @@ on:
         type: string
         default: 'chime'
         required: true
-      KSUN:
-        description: 'Add KernelSU-Next support'
+      RSU:
+        description: 'Add ReSukiSU support'
         type: boolean
-        default: false
+        default: true
+      SUSFS:
+        description: 'Add SuSFS support'
+        type: boolean
+        default: true
       APPLY_WORKAROUND:
         description: 'Disable Thermal Configs'
         type: boolean
@@ -101,7 +105,8 @@ jobs:
       env:
         DEVICE_TARGET: ${{ inputs.DEVICE_TARGET }}
         APPLY_WORKAROUND: ${{ inputs.APPLY_WORKAROUND }}
-        KSUN: ${{ inputs.KSUN }}
+        RSU: ${{ inputs.RSU }}
+        SUSFS: ${{ inputs.SUSFS }}
         KCFLAGS_W: "${{ inputs.KCFLAGS_W }}"
         TOOLCHAIN_URL: "${{ inputs.TOOLCHAIN_URL }}"
         CCACHE_SIZE: "7.5G"
@@ -114,22 +119,28 @@ jobs:
 
         cd kernel_root
 
-        if [[ "$KSUN" == "true" ]]; then
-          export IS_KSUN_ENABLED=true
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
+        if [[ "$RSU" == "true" ]]; then
+          export IS_RSU_ENABLED=true
+          curl -LSs "https://raw.githubusercontent.com/slakkystar/ReSukiSU/refs/heads/master/kernel/setup.sh" | bash -s master
           
-          if [ -f "../ksu_manual_hooks_v2.2.patch" ]; then
-            git apply ../ksu_manual_hooks_v2.2.patch || patch -p1 < ../ksu_manual_hooks_v2.2.patch
+          PATCH_FILE="../scope-minimized-manual-hooks-v2.2.patch"
+          if [ -f "$PATCH_FILE" ]; then
+            echo "Applying $PATCH_FILE..."
+            git apply "$PATCH_FILE" || patch -p1 < "$PATCH_FILE"
+          else
+            echo "Warning: Patch file $PATCH_FILE not found!"
           fi
         fi
 
         bash ../build.sh
 
     - name: Upload kernel artifacts
+      if: always()
       uses: actions/upload-artifact@v5
       with:
         name: Kernel-${{ inputs.DEVICE_TARGET }}
         include-hidden-files: true
+        if-no-files-found: ignore
         path: |
           kernel_root/*.zip
           kernel_root/out/.config

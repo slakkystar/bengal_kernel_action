@@ -1,6 +1,8 @@
+diff --git a/fs/exec.c b/fs/exec.c
+index 6bd9762501ee..48b9046f5fa2 100644
 --- a/fs/exec.c
 +++ b/fs/exec.c
-@@ -1930,12 +1930,21 @@
+@@ -1943,12 +1943,21 @@ int do_execve_file(struct file *file, void *__argv, void *__envp)
  	return __do_execve_file(AT_FDCWD, NULL, argv, envp, 0, file);
  }
  
@@ -22,7 +24,7 @@
  	return do_execveat_common(AT_FDCWD, filename, argv, envp, 0);
  }
  
-@@ -1963,6 +1972,9 @@
+@@ -1976,6 +1985,9 @@ static int compat_do_execve(struct filename *filename,
  		.is_compat = true,
  		.ptr.compat = __envp,
  	};
@@ -32,9 +34,11 @@
  	return do_execveat_common(AT_FDCWD, filename, argv, envp, 0);
  }
  
+diff --git a/fs/open.c b/fs/open.c
+index 13d70db567e0..55f82ec3a7b3 100644
 --- a/fs/open.c
 +++ b/fs/open.c
-@@ -450,8 +450,17 @@
+@@ -451,8 +451,17 @@ long do_faccessat(int dfd, const char __user *filename, int mode)
  	return res;
  }
  
@@ -52,9 +56,11 @@
  	return do_faccessat(dfd, filename, mode);
  }
  
+diff --git a/fs/stat.c b/fs/stat.c
+index f57350b7708b..22f45d8cf52d 100644
 --- a/fs/stat.c
 +++ b/fs/stat.c
-@@ -354,6 +354,12 @@
+@@ -381,6 +381,12 @@ SYSCALL_DEFINE2(newlstat, const char __user *, filename,
  	return cp_new_stat(&stat, statbuf);
  }
  
@@ -67,7 +73,7 @@
  #if !defined(__ARCH_WANT_STAT64) || defined(__ARCH_WANT_SYS_NEWFSTATAT)
  SYSCALL_DEFINE4(newfstatat, int, dfd, const char __user *, filename,
  		struct stat __user *, statbuf, int, flag)
-@@ -361,6 +367,9 @@
+@@ -388,6 +394,9 @@ SYSCALL_DEFINE4(newfstatat, int, dfd, const char __user *, filename,
  	struct kstat stat;
  	int error;
  
@@ -77,7 +83,7 @@
  	error = vfs_fstatat(dfd, filename, &stat, flag);
  	if (error)
  		return error;
-@@ -368,6 +377,10 @@
+@@ -395,6 +404,10 @@ SYSCALL_DEFINE4(newfstatat, int, dfd, const char __user *, filename,
  }
  #endif
  
@@ -88,7 +94,7 @@
  SYSCALL_DEFINE2(newfstat, unsigned int, fd, struct stat __user *, statbuf)
  {
  	struct kstat stat;
-@@ -376,6 +389,9 @@
+@@ -403,6 +416,9 @@ SYSCALL_DEFINE2(newfstat, unsigned int, fd, struct stat __user *, statbuf)
  	if (!error)
  		error = cp_new_stat(&stat, statbuf);
  
@@ -98,9 +104,32 @@
  	return error;
  }
  
+@@ -521,6 +537,10 @@ SYSCALL_DEFINE2(lstat64, const char __user *, filename,
+ 	return error;
+ }
+ 
++#ifdef CONFIG_KSU
++extern void ksu_handle_fstat64_ret(unsigned long *fd,
++				struct stat64 __user **statbuf_ptr); // for 32-bit
++#endif
+ SYSCALL_DEFINE2(fstat64, unsigned long, fd, struct stat64 __user *, statbuf)
+ {
+ 	struct kstat stat;
+@@ -529,6 +549,9 @@ SYSCALL_DEFINE2(fstat64, unsigned long, fd, struct stat64 __user *, statbuf)
+ 	if (!error)
+ 		error = cp_new_stat64(&stat, statbuf);
+ 
++#ifdef CONFIG_KSU // for 32-bit
++	ksu_handle_fstat64_ret(&fd, &statbuf);
++#endif
+ 	return error;
+ }
+ 
+diff --git a/kernel/reboot.c b/kernel/reboot.c
+index 216137ab3425..d98fcb26d70a 100644
 --- a/kernel/reboot.c
 +++ b/kernel/reboot.c
-@@ -305,6 +305,11 @@
+@@ -307,6 +307,11 @@ DEFINE_MUTEX(system_transition_mutex);
   *
   * reboot doesn't sync: do that yourself before calling this.
   */
@@ -112,7 +141,7 @@
  SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,
  		void __user *, arg)
  {
-@@ -312,6 +317,10 @@
+@@ -314,6 +319,10 @@ SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,
  	char buffer[256];
  	int ret = 0;
  
