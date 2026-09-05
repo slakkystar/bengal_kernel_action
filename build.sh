@@ -152,13 +152,13 @@ export LD_LIBRARY_PATH="$TC_DIR/lib"
 export LLVM_IAS=1
 export LLVM=1
 
+export KCFLAGS="-DOPLUS_FEATURE_ZRAM_OPT -DOPLUS_FEATURE_GAME_OPT"
+
 if [ "$KCFLAGS_W" = "true" ]; then
-    export KCFLAGS="-w -DOPLUS_FEATURE_ZRAM_OPT"
-    msg "KCFLAGS: -w -DOPLUS_FEATURE_ZRAM_OPT"
-else
-    export KCFLAGS="-DOPLUS_FEATURE_ZRAM_OPT"
-    msg "KCFLAGS: -DOPLUS_FEATURE_ZRAM_OPT"
+    export KCFLAGS="-w $KCFLAGS"
 fi
+
+msg "KCFLAGS: $KCFLAGS"
 
 COMMIT_COUNT=$(git rev-list --count HEAD 2>/dev/null || echo "0")
 COMMIT_HASH_12=$(git rev-parse --short=12 HEAD 2>/dev/null || echo "untracked")
