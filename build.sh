@@ -2,6 +2,7 @@
 
 set -e
 
+OPLUS="${OPLUS:-"true"}"
 SECONDS=0
 USER="builder"
 HOSTNAME="github-actions"
@@ -12,7 +13,13 @@ KCFLAGS_W=${KCFLAGS_W:-"false"}
 CCACHE_DIR="${HOME}/.ccache"
 CCACHE_SIZE=${CCACHE_SIZE:-"7.5G"}
 CLEAN_BUILD=${CLEAN_BUILD:-"false"}
-KERNELCODE="${KERNELCODE:-"OPlus-kernel"}"
+
+if [ "$OPLUS" == "true" ]; then
+    KERNELCODE="${KERNELCODE:-"OPlus-kernel"}"
+else
+    KERNELCODE="HyperKernel"
+fi
+
 ANDROID_VER="${ANDROID_VER:-"android16"}"
 RSU="${RSU:-"true"}"
 SUSFS="${SUSFS:-"true"}"
@@ -108,6 +115,11 @@ prepare_config() {
         fragments+=("arch/arm64/configs/vendor/susfs.config")
     fi
 
+    if [[ "$OPLUS" == "true" ]]; then
+        msg "Oplus build enabled: adding vendor/oplus.config fragment"
+        fragments+=("arch/arm64/configs/vendor/oplus.config")
+    fi
+
     if [[ "$APPLY_WORKAROUND" == "true" ]]; then
         local therm_disable="$OUT_DIR/disable-thermal.config"
         mkdir -p "$OUT_DIR"
@@ -152,16 +164,23 @@ export LD_LIBRARY_PATH="$TC_DIR/lib"
 export LLVM_IAS=1
 export LLVM=1
 
-export KCFLAGS="-DOPLUS_FEATURE_ZRAM_OPT -DOPLUS_FEATURE_GAME_OPT"
+KCFLAGS=""
+if [ "$OPLUS" = "true" ]; then
+    KCFLAGS="-DOPLUS_FEATURE_ZRAM_OPT -DOPLUS_FEATURE_GAME_OPT"
+fi
 
 if [ "$KCFLAGS_W" = "true" ]; then
-    export KCFLAGS="-w $KCFLAGS"
+    KCFLAGS="-w $KCFLAGS"
+fi
+
+if [ -n "$KCFLAGS" ]; then
+    export KCFLAGS
 fi
 
 msg "KCFLAGS: $KCFLAGS"
 
 COMMIT_COUNT=$(git rev-list --count HEAD 2>/dev/null || echo "0")
-COMMIT_HASH_12=$(git rev-parse --short=12 HEAD 2>/dev/null || echo "untracked")
+COMMIT_HASH_6=$(git rev-parse --short=6 HEAD 2>/dev/null || echo "untracked")
 COMMIT_HASH_SHORT=$(git rev-parse --short HEAD 2>/dev/null || echo "untracked")
 
 if [ "$IS_RSU_ENABLED" = "true" ]; then
@@ -170,8 +189,12 @@ else
     ZIPNAME="$KERNELCODE-vanilla-$(date '+%Y%m%d-%H%M')-$COMMIT_HASH_SHORT.zip"
 fi
 
+if [ "$OPLUS" == "true" ]; then
 # local version for OPlus
-KERNEL_LOCAL_VER="-$ANDROID_VER-o-${COMMIT_COUNT}-g${COMMIT_HASH_12}"
+KERNEL_LOCAL_VER="-$ANDROID_VER-o-${COMMIT_COUNT}-g${COMMIT_HASH_SHORT}"
+else
+KERNEL_LOCAL_VER="-g${COMMIT_HASH_6}"
+fi
 
 # kernel build flags
 BUILD_FLAGS="O=$OUT_DIR ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LOCALVERSION=$KERNEL_LOCAL_VER -j$(nproc --all)"

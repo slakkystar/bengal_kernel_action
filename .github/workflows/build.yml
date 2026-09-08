@@ -23,6 +23,10 @@ on:
         description: 'Add SuSFS support'
         type: boolean
         default: true
+      OPLUS:
+        description: 'Oplus build'
+        type: boolean
+        default: true
       APPLY_WORKAROUND:
         description: 'Disable Thermal Configs'
         type: boolean
@@ -107,6 +111,7 @@ jobs:
         APPLY_WORKAROUND: ${{ inputs.APPLY_WORKAROUND }}
         RSU: ${{ inputs.RSU }}
         SUSFS: ${{ inputs.SUSFS }}
+        OPLUS: "${{ inputs.OPLUS }}"
         KCFLAGS_W: "${{ inputs.KCFLAGS_W }}"
         TOOLCHAIN_URL: "${{ inputs.TOOLCHAIN_URL }}"
         CCACHE_SIZE: "7.5G"
