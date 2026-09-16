@@ -8,15 +8,15 @@ on:
         required: true
       BRANCH:
         description: 'Kernel branch'
-        default: 'android16'
+        default: 'android15'
         required: true
       DEVICE_TARGET:
         description: 'Device to build'
         type: string
         default: 'chime'
         required: true
-      RSU:
-        description: 'Add ReSukiSU support'
+      KSU:
+        description: 'Add KernelSU support'
         type: boolean
         default: true
       SUSFS:
@@ -51,11 +51,6 @@ on:
         description: 'Upload final zip to GitHub Releases'
         type: boolean
         default: false
-      ANDROID_VER:
-        description: 'Type custom Android version for localversion'
-        type: string
-        default: 'android16'
-        required: true
 
 jobs:
   build:
@@ -109,14 +104,13 @@ jobs:
       env:
         DEVICE_TARGET: ${{ inputs.DEVICE_TARGET }}
         APPLY_WORKAROUND: ${{ inputs.APPLY_WORKAROUND }}
-        RSU: ${{ inputs.RSU }}
+        KSU: ${{ inputs.KSU }}
         SUSFS: ${{ inputs.SUSFS }}
         OPLUS: "${{ inputs.OPLUS }}"
         KCFLAGS_W: "${{ inputs.KCFLAGS_W }}"
         TOOLCHAIN_URL: "${{ inputs.TOOLCHAIN_URL }}"
         CCACHE_SIZE: "7.5G"
         CLEAN_BUILD: "false"
-        ANDROID_VER: "${{ inputs.ANDROID_VER }}"
       run: |
         if [ ! -d ~/.ccache ]; then
           mkdir -p ~/.ccache
@@ -124,17 +118,9 @@ jobs:
 
         cd kernel_root
 
-        if [[ "$RSU" == "true" ]]; then
-          export IS_RSU_ENABLED=true
-          curl -LSs "https://raw.githubusercontent.com/slakkystar/ReSukiSU/refs/heads/master/kernel/setup.sh" | bash -s master
-          
-          PATCH_FILE="../scope-minimized-manual-hooks-v2.2.patch"
-          if [ -f "$PATCH_FILE" ]; then
-            echo "Applying $PATCH_FILE..."
-            git apply "$PATCH_FILE" || patch -p1 < "$PATCH_FILE"
-          else
-            echo "Warning: Patch file $PATCH_FILE not found!"
-          fi
+        if [[ "$KSU" == "true" ]]; then
+          export IS_KSU_ENABLED=true
+          curl -LSs "https://raw.githubusercontent.com/DXRN-MoonWake/KernelSU-Next/refs/heads/legacy-susfs-v2/kernel/setup.sh" | bash -s legacy-susfs-v2
         fi
 
         bash ../build.sh

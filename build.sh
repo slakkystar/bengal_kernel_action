@@ -20,9 +20,9 @@ else
     KERNELCODE="HyperKernel"
 fi
 
-ANDROID_VER="${ANDROID_VER:-"android16"}"
-RSU="${RSU:-"true"}"
+KSU="${KSU:-"true"}"
 SUSFS="${SUSFS:-"true"}"
+CIP="-cip136"
 
 export TERM=xterm
 red='\033[0;31m'
@@ -100,14 +100,14 @@ prepare_config() {
     local base_defconfig="chime_defconfig"
     local fragments=()
 
-    if [[ "$SUSFS" == "true" && "$RSU" != "true" ]]; then
-        msg "Error: To use SUSFS, you must also enable RSU." >&2
+    if [[ "$SUSFS" == "true" && "$KSU" != "true" ]]; then
+        msg "Error: To use SUSFS, you must also enable KSU." >&2
         exit 1
     fi
 
-    if [[ "$RSU" == "true" ]]; then
-        msg "RSU enabled: adding vendor/resukisu.config fragment"
-        fragments+=("arch/arm64/configs/vendor/resukisu.config")
+    if [[ "$KSU" == "true" ]]; then
+        msg "KSU enabled: adding vendor/resukisu.config fragment"
+        fragments+=("arch/arm64/configs/vendor/kernelsu.config")
     fi
 
     if [[ "$SUSFS" == "true" ]]; then
@@ -166,7 +166,7 @@ export LLVM=1
 
 KCFLAGS=""
 if [ "$OPLUS" = "true" ]; then
-    KCFLAGS="-DOPLUS_FEATURE_ZRAM_OPT -DOPLUS_FEATURE_GAME_OPT"
+    KCFLAGS="-DOPLUS_FEATURE_ZRAM_OPT"
 fi
 
 if [ "$KCFLAGS_W" = "true" ]; then
@@ -183,15 +183,15 @@ COMMIT_COUNT=$(git rev-list --count HEAD 2>/dev/null || echo "0")
 COMMIT_HASH_6=$(git rev-parse --short=6 HEAD 2>/dev/null || echo "untracked")
 COMMIT_HASH_SHORT=$(git rev-parse --short HEAD 2>/dev/null || echo "untracked")
 
-if [ "$IS_RSU_ENABLED" = "true" ]; then
-    ZIPNAME="$KERNELCODE-RSU-$(date '+%Y%m%d-%H%M')-$COMMIT_HASH_SHORT.zip"
+if [ "$IS_KSU_ENABLED" = "true" ]; then
+    ZIPNAME="$KERNELCODE-KSU-$(date '+%Y%m%d-%H%M')-$COMMIT_HASH_SHORT.zip"
 else
     ZIPNAME="$KERNELCODE-vanilla-$(date '+%Y%m%d-%H%M')-$COMMIT_HASH_SHORT.zip"
 fi
 
 if [ "$OPLUS" == "true" ]; then
 # local version for OPlus
-KERNEL_LOCAL_VER="-$ANDROID_VER-o-${COMMIT_COUNT}-g${COMMIT_HASH_SHORT}"
+KERNEL_LOCAL_VER="$CIP-g${COMMIT_HASH_SHORT}"
 else
 KERNEL_LOCAL_VER="-g${COMMIT_HASH_6}"
 fi
