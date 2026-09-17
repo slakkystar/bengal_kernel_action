@@ -120,7 +120,7 @@ jobs:
 
         if [[ "$KSU" == "true" ]]; then
           export IS_KSU_ENABLED=true
-          curl -LSs "https://raw.githubusercontent.com/DXRN-MoonWake/KernelSU-Next/refs/heads/legacy-susfs-v2/kernel/setup.sh" | bash -s legacy-susfs-v2
+          curl -LSs "https://raw.githubusercontent.com/slakkystar/ReSukiSU/refs/heads/master/kernel/setup.sh" | bash -s master
         fi
 
         bash ../build.sh
