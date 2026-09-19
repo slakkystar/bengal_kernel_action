@@ -2,29 +2,27 @@
 
 set -e
 
-OPLUS="${OPLUS:-"true"}"
 SECONDS=0
 USER="builder"
 HOSTNAME="github-actions"
-DEVICE_TARGET=${DEVICE_TARGET:-"chime"}
-TC_DIR="$HOME/clang-22"
+DEVICE_TARGET=${DEVICE_TARGET:-"lime"}
+DEFCONFIG=${DEFCONFIG:-"vendor/lime-perf_defconfig"}
+KCFLAGS_W=${KCFLAGS_W:-"true"}
+TOOLCHAIN_BASE="/tmp/toolchains"
+CLANG_REPO="$TOOLCHAIN_BASE/clang-prebuilts"
+CLANG_DIR="$CLANG_REPO/clang-r353983c"
+GCC64_DIR="$TOOLCHAIN_BASE/gcc64"
+GCC32_DIR="$TOOLCHAIN_BASE/gcc32"
+
 OUT_DIR="$(pwd)/out"
-KCFLAGS_W=${KCFLAGS_W:-"false"}
 CCACHE_DIR="${HOME}/.ccache"
 CCACHE_SIZE=${CCACHE_SIZE:-"7.5G"}
 CLEAN_BUILD=${CLEAN_BUILD:-"false"}
-
-if [ "$OPLUS" == "true" ]; then
-    KERNELCODE="${KERNELCODE:-"OPlus-kernel"}"
-else
-    KERNELCODE="HyperKernel"
-fi
-
-KSU="${KSU:-"true"}"
-SUSFS="${SUSFS:-"true"}"
-CIP="-cip136"
+ZIPNAME=${ZIPNAME:-"Kernel-$DEVICE_TARGET-$(date +%Y%m%d-%H%M).zip"}
 
 export TERM=xterm
+export DEBIAN_FRONTEND=noninteractive
+
 red='\033[0;31m'
 green='\033[0;32m'
 blue='\033[0;34m'
@@ -36,107 +34,53 @@ error() {
     exit 1
 }
 
-merge_kernel_configs() {
-    local base_defconfig="$1"
-    local merged_config="$OUT_DIR/.config"
-    local fragment_list=("${@:2}")
-
-    mkdir -p "$OUT_DIR"
-
-    if [[ ${#fragment_list[@]} -eq 0 ]]; then
-        msg "No extra fragments, copying base defconfig directly."
-        cp "arch/arm64/configs/$base_defconfig" "$merged_config"
-        return
-    fi
-
-    if [[ ! -x "scripts/kconfig/merge_config.sh" ]]; then
-        error "merge_config.sh not found or not executable. Make sure you are in kernel root."
-    fi
-
-    msg "Merging defconfig with fragments: ${fragment_list[*]}"
-    scripts/kconfig/merge_config.sh -m -O "$OUT_DIR" \
-        "arch/arm64/configs/$base_defconfig" \
-        "${fragment_list[@]}"
-
-    if [[ ! -f "$merged_config" ]]; then
-        error "Merged config not created!"
-    fi
-    msg "Merged config written to $merged_config"
-}
-
 setup_deps() {
-    local deps_lists=(aptitude bc bison ccache cpio curl flex git lz4 perl python-is-python3 tar wget)
-    sudo apt update -y
-    sudo apt install "${deps_lists[@]}" -y
-    sudo aptitude install libssl-dev -y
+    local deps_lists=(aptitude bc bison build-essential ccache cpio curl flex git lz4 make perl python-is-python3 tar wget zip libssl-dev tzdata)
+    apt-get update -y
+    apt-get install -y "${deps_lists[@]}"
 }
 
-_setup_toolchain() {
-    local url="${TOOLCHAIN_URL:-https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/9b144befdfd93b90e02c663504fb9f4b95f9faf8/clang-r596125.tar.gz}"
-    msg "Downloading toolchain from $url..."
-    wget -q "$url" -O /tmp/clang.tar.gz
-    [ ! -d "$TC_DIR" ] && mkdir -p "$TC_DIR"
-    tar -xzf /tmp/clang.tar.gz -C "$TC_DIR"
-    rm /tmp/clang.tar.gz
-    msg "Toolchain extracted to $TC_DIR"
-}
-
-setup_toolchain() {
+fetch_toolchains() {
     if [ "$UPDATE_TOOLCHAINS" = "true" ]; then
-        msg "Cleaning up old toolchains cache.."
-        rm -rf "$TC_DIR"
+        msg "Cleaning up old toolchains cache..."
+        rm -rf "$TOOLCHAIN_BASE"
         rm -rf "$CCACHE_DIR"
         mkdir -p "$CCACHE_DIR"
     fi
-    if [ ! -d "$TC_DIR" ]; then
-        _setup_toolchain
+
+    mkdir -p "$TOOLCHAIN_BASE"
+    if [ ! -x "$CLANG_DIR/bin/clang" ]; then
+        msg "Cloning Clang r353983c (LLVM 8.0)..."
+        rm -rf "$CLANG_REPO"
+        if ! git clone --depth=1 --filter=blob:none --sparse -b android10-release \
+            https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 "$CLANG_REPO"; then
+            rm -rf "$CLANG_REPO"
+            git clone --depth=1 -b android10-release \
+                https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 "$CLANG_REPO"
+        else
+            git -C "$CLANG_REPO" sparse-checkout set clang-r353983c
+        fi
+        [ -x "$CLANG_DIR/bin/clang" ] || error "clang not found at $CLANG_DIR/bin/clang"
     else
-        msg "Toolchain already exists"
+        msg "Clang already exists"
     fi
-    exit 0
+
+    if [ ! -d "$GCC64_DIR" ]; then
+        msg "Cloning GCC64 (aarch64-linux-android-4.9)..."
+        git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 \
+            -b android10-release --depth=1 "$GCC64_DIR"
+    else
+        msg "GCC64 already exists"
+    fi
+
+    if [ ! -d "$GCC32_DIR" ]; then
+        msg "Cloning GCC32 (arm-linux-androideabi-4.9)..."
+        git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 \
+            -b android10-release --depth=1 "$GCC32_DIR"
+    else
+        msg "GCC32 already exists"
+    fi
 }
-
-prepare_config() {
-    local base_defconfig="chime_defconfig"
-    local fragments=()
-
-    if [[ "$SUSFS" == "true" && "$KSU" != "true" ]]; then
-        msg "Error: To use SUSFS, you must also enable KSU." >&2
-        exit 1
-    fi
-
-    if [[ "$KSU" == "true" ]]; then
-        msg "KSU enabled: adding vendor/resukisu.config fragment"
-        fragments+=("arch/arm64/configs/vendor/kernelsu.config")
-    fi
-
-    if [[ "$SUSFS" == "true" ]]; then
-        msg "SuSFS enabled: adding vendor/susfs.config fragment"
-        fragments+=("arch/arm64/configs/vendor/susfs.config")
-    fi
-
-    if [[ "$OPLUS" == "true" ]]; then
-        msg "Oplus build enabled: adding vendor/oplus.config fragment"
-        fragments+=("arch/arm64/configs/vendor/oplus.config")
-    fi
-
-    if [[ "$APPLY_WORKAROUND" == "true" ]]; then
-        local therm_disable="$OUT_DIR/disable-thermal.config"
-        mkdir -p "$OUT_DIR"
-        cat > "$therm_disable" << EOF
-# CONFIG_QCOM_SPMI_TEMP_ALARM is not set
-# CONFIG_QTI_ADC_TM is not set
-# CONFIG_QTI_VIRTUAL_SENSOR is not set
-EOF
-        msg "Workaround enabled: adding disable-thermal.config"
-        fragments+=("$therm_disable")
-    fi
-
-    merge_kernel_configs "$base_defconfig" "${fragments[@]}"
-    make $BUILD_FLAGS olddefconfig
-}
-
-# ------------------- Main -------------------
 
 case "$1" in
 "--setup-deps")
@@ -144,7 +88,7 @@ case "$1" in
     exit 0
     ;;
 "--fetch-toolchains")
-    setup_toolchain
+    fetch_toolchains
     exit 0
     ;;
 "--clean")
@@ -157,47 +101,32 @@ case "$1" in
     ;;
 esac
 
+if [ ! -x "$CLANG_DIR/bin/clang" ] || [ ! -d "$GCC64_DIR" ] || [ ! -d "$GCC32_DIR" ]; then
+    fetch_toolchains
+fi
+
 export KBUILD_BUILD_USER=$USER
 export KBUILD_BUILD_HOST=$HOSTNAME
-export PATH="$TC_DIR/bin:$PATH"
-export LD_LIBRARY_PATH="$TC_DIR/lib"
-export LLVM_IAS=1
-export LLVM=1
+export PATH="$CLANG_DIR/bin:$GCC64_DIR/bin:$GCC32_DIR/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+export LD_LIBRARY_PATH="$CLANG_DIR/lib64:$LD_LIBRARY_PATH"
+export ARCH=arm64
+export SUBARCH=arm64
 
-KCFLAGS=""
-if [ "$OPLUS" = "true" ]; then
-    KCFLAGS="-DOPLUS_FEATURE_ZRAM_OPT -DOPLUS_FEATURE_EMMC_DRIVER -DOPLUS_FEATURE_EMMC_SDCARD_OPTIMIZE -DOPLUS_FEATURE_IPV6_OPTIMIZE"
-fi
-
+EXTRA_KCFLAGS="-B$GCC64_DIR/bin/aarch64-linux-android-"
 if [ "$KCFLAGS_W" = "true" ]; then
-    KCFLAGS="-w $KCFLAGS"
+    EXTRA_KCFLAGS="$EXTRA_KCFLAGS -w"
 fi
 
-if [ -n "$KCFLAGS" ]; then
-    export KCFLAGS
-fi
-
-msg "KCFLAGS: $KCFLAGS"
-
-COMMIT_COUNT=$(git rev-list --count HEAD 2>/dev/null || echo "0")
-COMMIT_HASH_6=$(git rev-parse --short=6 HEAD 2>/dev/null || echo "untracked")
-COMMIT_HASH_SHORT=$(git rev-parse --short HEAD 2>/dev/null || echo "untracked")
-
-if [ "$IS_KSU_ENABLED" = "true" ]; then
-    ZIPNAME="$KERNELCODE-KSU-$(date '+%Y%m%d-%H%M')-$COMMIT_HASH_SHORT.zip"
-else
-    ZIPNAME="$KERNELCODE-vanilla-$(date '+%Y%m%d-%H%M')-$COMMIT_HASH_SHORT.zip"
-fi
-
-if [ "$OPLUS" == "true" ]; then
-# local version for OPlus
-KERNEL_LOCAL_VER="$CIP-g${COMMIT_HASH_SHORT}"
-else
-KERNEL_LOCAL_VER="-g${COMMIT_HASH_6}"
-fi
-
-# kernel build flags
-BUILD_FLAGS="O=$OUT_DIR ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LOCALVERSION=$KERNEL_LOCAL_VER -j$(nproc --all)"
+BUILD_FLAGS=(
+    O="$OUT_DIR"
+    ARCH=arm64
+    CC="ccache clang"
+    CLANG_TRIPLE=aarch64-linux-gnu-
+    CROSS_COMPILE=aarch64-linux-android-
+    CROSS_COMPILE_ARM32=arm-linux-androideabi-
+    KCFLAGS="$EXTRA_KCFLAGS"
+    -j"$(nproc --all)"
+)
 
 mkdir -p "$OUT_DIR"
 
@@ -211,18 +140,25 @@ export CCACHE_DIR="$CCACHE_DIR"
 ccache -M "$CCACHE_SIZE"
 export CCACHE_SLOPPINESS="time_macros"
 
+clang --version | head -n1 || error "clang is not in PATH"
 msg "Starting compilation for $DEVICE_TARGET..."
-
-prepare_config
+msg "Generating defconfig ($DEFCONFIG)..."
+make "${BUILD_FLAGS[@]}" "$DEFCONFIG"
 
 msg "Building kernel..."
-make $BUILD_FLAGS
+make "${BUILD_FLAGS[@]}"
 
-if [ -f "$OUT_DIR/arch/arm64/boot/Image.gz" ]; then
+if [ -f "$OUT_DIR/arch/arm64/boot/Image.gz" ] || [ -f "$OUT_DIR/arch/arm64/boot/Image.gz-dtb" ]; then
     msg "Kernel compiled successfully! Packaging..."
     rm -rf AnyKernel3
     git clone -q https://github.com/slakkystar/AnyKernel3.git --single-branch -b "master"
-    cp "$OUT_DIR/arch/arm64/boot/Image.gz" AnyKernel3/
+    
+    if [ -f "$OUT_DIR/arch/arm64/boot/Image.gz-dtb" ]; then
+        cp "$OUT_DIR/arch/arm64/boot/Image.gz-dtb" AnyKernel3/Image.gz-dtb
+    else
+        cp "$OUT_DIR/arch/arm64/boot/Image.gz" AnyKernel3/
+    fi
+
     cp "$OUT_DIR/arch/arm64/boot/dts/vendor/qcom/bengal.dtb" AnyKernel3/dtb 2>/dev/null || true
     cp "$OUT_DIR/arch/arm64/boot/dtbo.img" AnyKernel3/ 2>/dev/null || true
 
@@ -235,5 +171,5 @@ if [ -f "$OUT_DIR/arch/arm64/boot/Image.gz" ]; then
     echo -e "\n${green}Build completed in $((SECONDS / 60)) minute(s)!${reset}"
     msg "Output Zip: $ZIPNAME (md5: $MD5_CHECK)"
 else
-    error "Compilation failed!"
+    error "Compilation failed! Image.gz not found."
 fi

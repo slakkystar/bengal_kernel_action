@@ -4,130 +4,78 @@ on:
     inputs:
       REPO:
         description: 'Kernel repository'
-        default: 'slakkystar/kernel_xiaomi_citrus_sm6115'
+        default: 'slakkystar/Xiaomi-chime'
         required: true
       BRANCH:
         description: 'Kernel branch'
-        default: 'android15'
+        default: 'lime-q-oss'
         required: true
       DEVICE_TARGET:
         description: 'Device to build'
         type: string
         default: 'chime'
         required: true
-      KSU:
-        description: 'Add KernelSU support'
-        type: boolean
-        default: true
-      SUSFS:
-        description: 'Add SuSFS support'
-        type: boolean
-        default: true
-      OPLUS:
-        description: 'Oplus build'
-        type: boolean
-        default: true
-      APPLY_WORKAROUND:
-        description: 'Disable Thermal Configs'
-        type: boolean
-        default: false
-      BUILD_RELEASE:
-        description: 'Build non-nightly'
-        type: boolean
-        default: false
-      UPDATE_TOOLCHAIN:
-        description: 'Force update toolchain cache'
-        type: boolean
-        default: false
       KCFLAGS_W:
         description: 'Enable KCFLAGS=-w'
         type: boolean
         default: true
-      TOOLCHAIN_URL:
-        description: 'Custom Clang toolchain URL (leave empty for default)'
-        required: false
-        default: ''
-      UPLOAD_RELEASE:
-        description: 'Upload final zip to GitHub Releases'
-        type: boolean
-        default: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    container:
+      image: ubuntu:20.04
     steps:
     - name: Set Timezone
-      run: sudo ln -sf /usr/share/zoneinfo/Asia/Jakarta /etc/localtime
+      run: |
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get update && apt-get install -y tzdata
+        ln -sf /usr/share/zoneinfo/Asia/Jakarta /etc/localtime
 
-    - uses: actions/checkout@v5
+    - name: Checkout repository
+      uses: actions/checkout@v4
       with:
         fetch-depth: 1
-
-    - name: Clone kernel source
-      if: inputs.UPDATE_TOOLCHAIN != 'true'
-      run: git clone --single-branch -b ${{ inputs.BRANCH }} https://github.com/${{ inputs.REPO }} kernel_root
-
-    - name: Cache Toolchain
-      id: cache-toolchain
-      uses: actions/cache@v5
-      with:
-        path: ~/clang-22
-        key: llvm-22-${{ hashFiles('**/TOOLCHAIN_URL') || 'default' }}
-
-    - name: Cache ccache
-      uses: actions/cache@v5
-      with:
-        path: ~/.ccache
-        key: ccache-kernel-${{ github.sha }}
-        restore-keys: ccache-kernel-
 
     - name: Prepare Dependencies
       run: chmod +x ./build.sh && bash ./build.sh --setup-deps
 
-    - name: Setup Build Environment
-      if: inputs.UPDATE_TOOLCHAIN != 'true'
-      id: buildKernel
-      run: |
-        cd kernel_root
-        KERNELCODE=$(cat ../codename 2>/dev/null || echo "kernel")
-        echo "KERNELCODE=$KERNELCODE" >> $GITHUB_ENV
+    - name: Clone kernel source
+      run: git clone --single-branch -b ${{ inputs.BRANCH }} https://github.com/${{ inputs.REPO }} kernel_root
+
+    - name: Cache Toolchains
+      id: cache-toolchain
+      uses: actions/cache@v4
+      with:
+        path: /tmp/toolchains
+        key: toolchain-clang8-gcc4.9-v3
+
+    - name: Cache ccache
+      uses: actions/cache@v4
+      with:
+        path: ~/.ccache
+        key: ccache-kernel-${{ github.sha }}
+        restore-keys: |
+          ccache-kernel-
 
     - name: Fetch Toolchains
-      if: steps.cache-toolchain.outputs.cache-hit != 'true' || inputs.UPDATE_TOOLCHAIN == 'true'
-      env:
-        UPDATE_TOOLCHAINS: ${{ inputs.UPDATE_TOOLCHAIN }}
-        TOOLCHAIN_URL: ${{ inputs.TOOLCHAIN_URL }}
+      if: steps.cache-toolchain.outputs.cache-hit != 'true'
       run: bash ./build.sh --fetch-toolchains
 
     - name: Build Kernel
-      if: inputs.UPDATE_TOOLCHAIN != 'true'
       env:
         DEVICE_TARGET: ${{ inputs.DEVICE_TARGET }}
-        APPLY_WORKAROUND: ${{ inputs.APPLY_WORKAROUND }}
-        KSU: ${{ inputs.KSU }}
-        SUSFS: ${{ inputs.SUSFS }}
-        OPLUS: "${{ inputs.OPLUS }}"
         KCFLAGS_W: "${{ inputs.KCFLAGS_W }}"
-        TOOLCHAIN_URL: "${{ inputs.TOOLCHAIN_URL }}"
         CCACHE_SIZE: "7.5G"
         CLEAN_BUILD: "false"
       run: |
-        if [ ! -d ~/.ccache ]; then
-          mkdir -p ~/.ccache
-        fi
-
+        mkdir -p ~/.ccache
         cd kernel_root
-
-        if [[ "$KSU" == "true" ]]; then
-          export IS_KSU_ENABLED=true
-          curl -LSs "https://raw.githubusercontent.com/slakkystar/ReSukiSU/refs/heads/master/kernel/setup.sh" | bash -s master
-        fi
-
         bash ../build.sh
 
     - name: Upload kernel artifacts
       if: always()
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v4
       with:
         name: Kernel-${{ inputs.DEVICE_TARGET }}
         include-hidden-files: true
@@ -135,13 +83,3 @@ jobs:
         path: |
           kernel_root/*.zip
           kernel_root/out/.config
-
-    - name: Upload to GitHub Release
-      if: inputs.UPLOAD_RELEASE == 'true' && inputs.UPDATE_TOOLCHAIN != 'true'
-      uses: softprops/action-gh-release@v2
-      with:
-        files: kernel_root/*.zip
-        tag_name: "build-${{ github.run_number }}"
-        name: "Kernel Build #${{ github.run_number }}"
-        draft: false
-        prerelease: ${{ inputs.BUILD_RELEASE == 'false' }}
