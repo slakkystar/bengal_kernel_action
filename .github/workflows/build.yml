@@ -48,7 +48,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: /tmp/toolchains
-        key: toolchain-clang8-gcc4.9-v3
+        key: toolchain-clang10.0.7-gcc4.9-v1
 
     - name: Cache ccache
       uses: actions/cache@v4

@@ -10,7 +10,7 @@ DEFCONFIG=${DEFCONFIG:-"vendor/lime-perf_defconfig"}
 KCFLAGS_W=${KCFLAGS_W:-"true"}
 TOOLCHAIN_BASE="/tmp/toolchains"
 CLANG_REPO="$TOOLCHAIN_BASE/clang-prebuilts"
-CLANG_DIR="$CLANG_REPO/clang-r353983c"
+CLANG_DIR="$CLANG_REPO/clang-r377782d"
 GCC64_DIR="$TOOLCHAIN_BASE/gcc64"
 GCC32_DIR="$TOOLCHAIN_BASE/gcc32"
 
@@ -50,15 +50,15 @@ fetch_toolchains() {
 
     mkdir -p "$TOOLCHAIN_BASE"
     if [ ! -x "$CLANG_DIR/bin/clang" ]; then
-        msg "Cloning Clang r353983c (LLVM 8.0)..."
+        msg "Cloning Clang r377782d (clang 10.0.7)..."
         rm -rf "$CLANG_REPO"
-        if ! git clone --depth=1 --filter=blob:none --sparse -b android10-release \
+        if ! git clone --depth=1 --filter=blob:none --sparse -b android11-release \
             https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 "$CLANG_REPO"; then
             rm -rf "$CLANG_REPO"
-            git clone --depth=1 -b android10-release \
+            git clone --depth=1 -b android11-release \
                 https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 "$CLANG_REPO"
         else
-            git -C "$CLANG_REPO" sparse-checkout set clang-r353983c
+            git -C "$CLANG_REPO" sparse-checkout set clang-r377782d
         fi
         [ -x "$CLANG_DIR/bin/clang" ] || error "clang not found at $CLANG_DIR/bin/clang"
     else
