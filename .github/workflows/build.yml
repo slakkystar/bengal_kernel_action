@@ -51,6 +51,10 @@ on:
         description: 'Upload final zip to GitHub Releases'
         type: boolean
         default: false
+      UPLOAD_TELEGRAM:
+        description: 'Upload artifacts to Telegram'
+        type: boolean
+        default: true
 
 jobs:
   build:
@@ -124,6 +128,8 @@ jobs:
         fi
 
         bash ../build.sh
+        echo "<b>📋 Changelog:</b>" > changelog.txt
+        git log -5 --pretty=format:"• <code>%H</code> - %s" >> changelog.txt
 
     - name: Upload kernel artifacts
       if: always()
@@ -135,6 +141,7 @@ jobs:
         path: |
           kernel_root/*.zip
           kernel_root/out/.config
+          kernel_root/changelog.txt
 
     - name: Upload to GitHub Release
       if: inputs.UPLOAD_RELEASE == 'true' && inputs.UPDATE_TOOLCHAIN != 'true'
@@ -145,3 +152,11 @@ jobs:
         name: "Kernel Build #${{ github.run_number }}"
         draft: false
         prerelease: ${{ inputs.BUILD_RELEASE == 'false' }}
+
+  upload_tg:
+    needs: build
+    if: inputs.UPLOAD_TELEGRAM == true
+    uses: ./.github/workflows/upload.yml
+    with:
+      device: ${{ inputs.DEVICE_TARGET }}
+    secrets: inherit

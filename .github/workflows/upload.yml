@@ -1,0 +1,69 @@
+name: Upload to Telegram
+
+on:
+  workflow_call:
+    inputs:
+      device:
+        description: 'Device codename'
+        required: true
+        type: string
+
+jobs:
+  telegram_upload:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: Kernel-${{ inputs.device }}
+          path: artifact_dir
+
+      - name: Check files and send to Telegram
+        run: |
+          cd artifact_dir
+          # Find files in the downloaded artifact
+          ZIP_FILE=$(find . -name "*.zip" | head -n 1)
+          CONFIG_FILE=$(find . -name ".config" | head -n 1)
+          CHANGELOG_FILE=$(find . -name "changelog.txt" | head -n 1)
+
+          # Skip if kernel zip or .config is missing
+          if [[ -z "$ZIP_FILE" || -z "$CONFIG_FILE" ]]; then
+            echo "Kernel archive or .config not found. Skipping upload to Telegram."
+            exit 0
+          fi
+
+          # Collect build metadata
+          DATE=$(date +"%d.%m.%Y %H:%M")
+          SIZE=$(du -m "$ZIP_FILE" | cut -f1)
+          MD5=$(md5sum "$ZIP_FILE" | awk '{print $1}')
+
+          if [[ -f "$CHANGELOG_FILE" ]]; then
+            CHANGELOG=$(cat "$CHANGELOG_FILE")
+          else
+            CHANGELOG="Changelog unavailable."
+          fi
+
+          # Format post message using Telegram HTML markup
+          CAPTION=$(cat <<EOF
+          📦 <b>Kernel Build Successful!</b>
+
+          📱 <b>Device:</b> ${{ inputs.device }}
+          📅 <b>Date:</b> $DATE
+          ⚖️ <b>Size:</b> ${SIZE} MB
+          🔐 <b>MD5:</b> <code>$MD5</code>
+
+          $CHANGELOG
+          EOF
+          )
+
+          # Send kernel archive with caption
+          curl -F document=@"$ZIP_FILE" \
+               -F chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+               -F caption="$CAPTION" \
+               -F parse_mode="HTML" \
+               https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendDocument
+
+          # Send .config file separately
+          curl -F document=@"$CONFIG_FILE" \
+               -F chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+               https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendDocument
