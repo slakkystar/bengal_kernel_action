@@ -8,7 +8,7 @@ on:
         required: true
       BRANCH:
         description: 'Kernel branch'
-        default: 'android15'
+        default: 'main'
         required: true
       DEVICE_TARGET:
         description: 'Device to build'
