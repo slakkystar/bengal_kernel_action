@@ -72,7 +72,7 @@ setup_deps() {
 }
 
 _setup_toolchain() {
-    local url="${TOOLCHAIN_URL:-https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/9b144befdfd93b90e02c663504fb9f4b95f9faf8/clang-r596125.tar.gz}"
+    local url="${TOOLCHAIN_URL:-https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android17-release/clang-r596125.tar.gz}"
     msg "Downloading toolchain from $url..."
     wget -q "$url" -O /tmp/clang.tar.gz
     [ ! -d "$TC_DIR" ] && mkdir -p "$TC_DIR"
