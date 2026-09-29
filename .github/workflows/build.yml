@@ -43,10 +43,14 @@ on:
         description: 'Enable KCFLAGS=-w'
         type: boolean
         default: true
-      TOOLCHAIN_URL:
-        description: 'Custom Clang toolchain URL (leave empty for default)'
-        required: false
-        default: ''
+      TOOLCHAIN_BRANCH:
+        description: 'AOSP clang branch'
+        type: string
+        default: 'android17-release'
+      TOOLCHAIN_DIR_NAME:
+        description: 'AOSP clang directory'
+        type: string
+        default: 'clang-r596125'
       UPLOAD_RELEASE:
         description: 'Upload final zip to GitHub Releases'
         type: boolean
@@ -59,6 +63,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
     - name: Set Timezone
       run: sudo ln -sf /usr/share/zoneinfo/Asia/Jakarta /etc/localtime
@@ -68,7 +74,7 @@ jobs:
         fetch-depth: 1
 
     - name: Clone kernel source
-      if: inputs.UPDATE_TOOLCHAIN != 'true'
+      if: ${{ !inputs.UPDATE_TOOLCHAIN }}
       run: git clone --single-branch -b ${{ inputs.BRANCH }} https://github.com/${{ inputs.REPO }} kernel_root
 
     - name: Cache Toolchain
@@ -76,7 +82,7 @@ jobs:
       uses: actions/cache@v5
       with:
         path: ~/clang-22
-        key: llvm-22-${{ hashFiles('**/TOOLCHAIN_URL') || 'default' }}
+        key: toolchain-${{ inputs.TOOLCHAIN_BRANCH }}-${{ inputs.TOOLCHAIN_DIR_NAME }}-v1
 
     - name: Cache ccache
       uses: actions/cache@v5
@@ -89,7 +95,7 @@ jobs:
       run: chmod +x ./build.sh && bash ./build.sh --setup-deps
 
     - name: Setup Build Environment
-      if: inputs.UPDATE_TOOLCHAIN != 'true'
+      if: ${{ !inputs.UPDATE_TOOLCHAIN }}
       id: buildKernel
       run: |
         cd kernel_root
@@ -97,14 +103,15 @@ jobs:
         echo "KERNELCODE=$KERNELCODE" >> $GITHUB_ENV
 
     - name: Fetch Toolchains
-      if: steps.cache-toolchain.outputs.cache-hit != 'true' || inputs.UPDATE_TOOLCHAIN == 'true'
+      if: ${{ steps.cache-toolchain.outputs.cache-hit != 'true' || inputs.UPDATE_TOOLCHAIN }}
       env:
         UPDATE_TOOLCHAINS: ${{ inputs.UPDATE_TOOLCHAIN }}
-        TOOLCHAIN_URL: ${{ inputs.TOOLCHAIN_URL }}
+        TOOLCHAIN_BRANCH: ${{ inputs.TOOLCHAIN_BRANCH }}
+        TOOLCHAIN_DIR_NAME: ${{ inputs.TOOLCHAIN_DIR_NAME }}
       run: bash ./build.sh --fetch-toolchains
 
     - name: Build Kernel
-      if: inputs.UPDATE_TOOLCHAIN != 'true'
+      if: ${{ !inputs.UPDATE_TOOLCHAIN }}
       env:
         DEVICE_TARGET: ${{ inputs.DEVICE_TARGET }}
         APPLY_WORKAROUND: ${{ inputs.APPLY_WORKAROUND }}
@@ -112,7 +119,6 @@ jobs:
         SUSFS: ${{ inputs.SUSFS }}
         OPLUS: "${{ inputs.OPLUS }}"
         KCFLAGS_W: "${{ inputs.KCFLAGS_W }}"
-        TOOLCHAIN_URL: "${{ inputs.TOOLCHAIN_URL }}"
         CCACHE_SIZE: "7.5G"
         CLEAN_BUILD: "false"
       run: |
@@ -144,18 +150,18 @@ jobs:
           kernel_root/changelog.txt
 
     - name: Upload to GitHub Release
-      if: inputs.UPLOAD_RELEASE == 'true' && inputs.UPDATE_TOOLCHAIN != 'true'
+      if: ${{ inputs.UPLOAD_RELEASE && !inputs.UPDATE_TOOLCHAIN }}
       uses: softprops/action-gh-release@v2
       with:
         files: kernel_root/*.zip
         tag_name: "build-${{ github.run_number }}"
         name: "Kernel Build #${{ github.run_number }}"
         draft: false
-        prerelease: ${{ inputs.BUILD_RELEASE == 'false' }}
+        prerelease: ${{ !inputs.BUILD_RELEASE }}
 
   upload_tg:
     needs: build
-    if: inputs.UPLOAD_TELEGRAM == true
+    if: ${{ inputs.UPLOAD_TELEGRAM && !inputs.UPDATE_TOOLCHAIN }}
     uses: ./.github/workflows/upload.yml
     with:
       device: ${{ inputs.DEVICE_TARGET }}

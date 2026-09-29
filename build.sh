@@ -65,20 +65,45 @@ merge_kernel_configs() {
 }
 
 setup_deps() {
-    local deps_lists=(aptitude bc bison ccache cpio curl flex git lz4 perl python-is-python3 tar wget)
+    local deps_lists=(aptitude bc bison ccache cpio curl flex git lz4 perl python-is-python3 tar)
     sudo apt update -y
     sudo apt install "${deps_lists[@]}" -y
     sudo aptitude install libssl-dev -y
 }
 
 _setup_toolchain() {
-    local url="${TOOLCHAIN_URL:-https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android17-release/clang-r596125.tar.gz}"
-    msg "Downloading toolchain from $url..."
-    wget -q "$url" -O /tmp/clang.tar.gz
-    [ ! -d "$TC_DIR" ] && mkdir -p "$TC_DIR"
-    tar -xzf /tmp/clang.tar.gz -C "$TC_DIR"
-    rm /tmp/clang.tar.gz
-    msg "Toolchain extracted to $TC_DIR"
+    local repo_url="${TOOLCHAIN_REPO:-https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86}"
+    local branch="${TOOLCHAIN_BRANCH:-android17-release}"
+    local clang_dir="${TOOLCHAIN_DIR_NAME:-clang-r596125}"
+    local tmp_repo="/tmp/clang-repo"
+    local attempts=5
+    local ok=false
+
+    for i in $(seq 1 "$attempts"); do
+        msg "Cloning toolchain ($branch/$clang_dir), attempt $i/$attempts..."
+        rm -rf "$tmp_repo"
+        if git clone -q --depth=1 --filter=blob:none --sparse -b "$branch" "$repo_url" "$tmp_repo" \
+            && git -C "$tmp_repo" sparse-checkout set "$clang_dir" \
+            && [ -x "$tmp_repo/$clang_dir/bin/clang" ]; then
+            ok=true
+            break
+        fi
+        msg "Attempt $i failed, retrying in $((i * 10))s..."
+        sleep $((i * 10))
+    done
+
+    if [ "$ok" != "true" ]; then
+        rm -rf "$tmp_repo"
+        error "Failed to fetch toolchain after $attempts attempts"
+    fi
+
+    rm -rf "$TC_DIR"
+    mkdir -p "$(dirname "$TC_DIR")"
+    mv "$tmp_repo/$clang_dir" "$TC_DIR"
+    rm -rf "$tmp_repo"
+
+    msg "Toolchain installed to $TC_DIR"
+    "$TC_DIR/bin/clang" --version | head -n1
 }
 
 setup_toolchain() {
@@ -88,12 +113,13 @@ setup_toolchain() {
         rm -rf "$CCACHE_DIR"
         mkdir -p "$CCACHE_DIR"
     fi
-    if [ ! -d "$TC_DIR" ]; then
+
+    if [ ! -x "$TC_DIR/bin/clang" ]; then
         _setup_toolchain
     else
         msg "Toolchain already exists"
+        "$TC_DIR/bin/clang" --version | head -n1
     fi
-    exit 0
 }
 
 prepare_config() {
@@ -106,7 +132,7 @@ prepare_config() {
     fi
 
     if [[ "$KSU" == "true" ]]; then
-        msg "KSU enabled: adding vendor/resukisu.config fragment"
+        msg "KSU enabled: adding vendor/kernelsu.config fragment"
         fragments+=("arch/arm64/configs/vendor/kernelsu.config")
     fi
 
