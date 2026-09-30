@@ -16,6 +16,7 @@ CLEAN_BUILD=${CLEAN_BUILD:-"false"}
 
 if [ "$OPLUS" == "true" ]; then
     KERNELCODE="${KERNELCODE:-"OPlus-kernel"}"
+    export IS_OPLUS=true
 else
     KERNELCODE="HyperKernel"
 fi
@@ -190,17 +191,8 @@ export LD_LIBRARY_PATH="$TC_DIR/lib"
 export LLVM_IAS=1
 export LLVM=1
 
-KCFLAGS=""
-if [ "$OPLUS" = "true" ]; then
-    KCFLAGS="-DOPLUS_FEATURE_ZRAM_OPT -DOPLUS_FEATURE_EMMC_DRIVER -DOPLUS_FEATURE_EMMC_SDCARD_OPTIMIZE -DOPLUS_FEATURE_MULTI_KSWAPD -DOPLUS_FEATURE_PROCESS_RECLAIM"
-fi
-
 if [ "$KCFLAGS_W" = "true" ]; then
-    KCFLAGS="-w $KCFLAGS"
-fi
-
-if [ -n "$KCFLAGS" ]; then
-    export KCFLAGS
+    export KCFLAGS="-w"
 fi
 
 msg "KCFLAGS: $KCFLAGS"
