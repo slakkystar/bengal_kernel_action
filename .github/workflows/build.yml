@@ -130,7 +130,7 @@ jobs:
 
         if [[ "$KSU" == "true" ]]; then
           export IS_KSU_ENABLED=true
-          curl -LSs "https://raw.githubusercontent.com/slakkystar/ReSukiSU/refs/heads/master/kernel/setup.sh" | bash -s master
+          curl -LSs "https://raw.githubusercontent.com/slakkystar/ReSukiSU/refs/heads/main/kernel/setup.sh" | bash -s main
         fi
 
         bash ../build.sh
