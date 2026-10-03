@@ -3,21 +3,20 @@
 set -e
 
 SECONDS=0
-USER="builder"
-HOSTNAME="github-actions"
+USER="slakkystar"
+HOSTNAME="slakkystar-github"
 DEVICE_TARGET=${DEVICE_TARGET:-"lime"}
 DEFCONFIG=${DEFCONFIG:-"vendor/lime-perf_defconfig"}
 KCFLAGS_W=${KCFLAGS_W:-"true"}
 TOOLCHAIN_BASE="/tmp/toolchains"
 CLANG_REPO="$TOOLCHAIN_BASE/clang-prebuilts"
-CLANG_DIR="$CLANG_REPO/clang-r377782d"
+CLANG_DIR="$CLANG_REPO/clang-r349610b"
 GCC64_DIR="$TOOLCHAIN_BASE/gcc64"
 GCC32_DIR="$TOOLCHAIN_BASE/gcc32"
 
 OUT_DIR="$(pwd)/out"
 CCACHE_DIR="${HOME}/.ccache"
 CCACHE_SIZE=${CCACHE_SIZE:-"7.5G"}
-CLEAN_BUILD=${CLEAN_BUILD:-"false"}
 ZIPNAME=${ZIPNAME:-"Kernel-$DEVICE_TARGET-$(date +%Y%m%d-%H%M).zip"}
 
 export TERM=xterm
@@ -50,15 +49,15 @@ fetch_toolchains() {
 
     mkdir -p "$TOOLCHAIN_BASE"
     if [ ! -x "$CLANG_DIR/bin/clang" ]; then
-        msg "Cloning Clang r377782d (clang 10.0.7)..."
+        msg "Cloning Clang r349610b..."
         rm -rf "$CLANG_REPO"
-        if ! git clone --depth=1 --filter=blob:none --sparse -b android11-release \
+        if ! git clone --depth=1 --filter=blob:none --sparse -b android10-release \
             https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 "$CLANG_REPO"; then
             rm -rf "$CLANG_REPO"
-            git clone --depth=1 -b android11-release \
+            git clone --depth=1 -b android10-release \
                 https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 "$CLANG_REPO"
         else
-            git -C "$CLANG_REPO" sparse-checkout set clang-r377782d
+            git -C "$CLANG_REPO" sparse-checkout set clang-r349610b
         fi
         [ -x "$CLANG_DIR/bin/clang" ] || error "clang not found at $CLANG_DIR/bin/clang"
     else
@@ -129,12 +128,6 @@ BUILD_FLAGS=(
 )
 
 mkdir -p "$OUT_DIR"
-
-if [ "$CLEAN_BUILD" = "true" ]; then
-    msg "Cleaning output directory..."
-    rm -rf "$OUT_DIR"
-    mkdir -p "$OUT_DIR"
-fi
 
 export CCACHE_DIR="$CCACHE_DIR"
 ccache -M "$CCACHE_SIZE"

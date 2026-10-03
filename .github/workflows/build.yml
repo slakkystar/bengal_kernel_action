@@ -48,7 +48,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: /tmp/toolchains
-        key: toolchain-clang10.0.7-gcc4.9-v1
+        key: toolchain-clang8.0.9-gcc4.9-v1
 
     - name: Cache ccache
       uses: actions/cache@v4
@@ -67,7 +67,6 @@ jobs:
         DEVICE_TARGET: ${{ inputs.DEVICE_TARGET }}
         KCFLAGS_W: "${{ inputs.KCFLAGS_W }}"
         CCACHE_SIZE: "7.5G"
-        CLEAN_BUILD: "false"
       run: |
         mkdir -p ~/.ccache
         cd kernel_root
