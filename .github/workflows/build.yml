@@ -65,6 +65,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write
     steps:
     - name: Set Timezone
       run: sudo ln -sf /usr/share/zoneinfo/Asia/Jakarta /etc/localtime
@@ -73,9 +74,89 @@ jobs:
       with:
         fetch-depth: 1
 
-    - name: Clone kernel source
+    - name: Prepare source cache key
       if: ${{ !inputs.UPDATE_TOOLCHAIN }}
-      run: git clone --single-branch -b ${{ inputs.BRANCH }} https://github.com/${{ inputs.REPO }} kernel_root
+      env:
+        REPO: ${{ inputs.REPO }}
+        BRANCH: ${{ inputs.BRANCH }}
+      run: echo "SRC_KEY=kernel-src-$(echo "${REPO}@${BRANCH}" | tr -c 'A-Za-z0-9._@-' '_')" >> $GITHUB_ENV
+
+    - name: Restore kernel source cache
+      id: src-cache
+      if: ${{ !inputs.UPDATE_TOOLCHAIN }}
+      uses: actions/cache/restore@v5
+      with:
+        path: kernel_root
+        key: ${{ env.SRC_KEY }}-${{ github.run_id }}
+        restore-keys: ${{ env.SRC_KEY }}-
+
+    - name: Sync kernel source (mirror of remote)
+      id: sync
+      if: ${{ !inputs.UPDATE_TOOLCHAIN }}
+      env:
+        REPO: ${{ inputs.REPO }}
+        BRANCH: ${{ inputs.BRANCH }}
+        DEPTH: "50"
+      run: |
+        set -e
+        URL="https://github.com/${REPO}"
+
+        fresh_clone() {
+          rm -rf kernel_root
+          git clone --single-branch --depth="$DEPTH" -b "$BRANCH" "$URL" kernel_root
+        }
+
+        OLD=none
+        if [ -d kernel_root/.git ]; then
+          echo "Cache found, syncing..."
+          cd kernel_root
+          OLD=$(git rev-parse HEAD 2>/dev/null || echo none)
+          git remote set-url origin "$URL"
+          if git fetch --depth="$DEPTH" --force --prune origin \
+               "+refs/heads/${BRANCH}:refs/remotes/origin/${BRANCH}"; then
+            git checkout -f -B "$BRANCH" "origin/$BRANCH"
+            git reset --hard "origin/$BRANCH"
+            git clean -ffdx
+            cd ..
+          else
+            echo "Fetch failed, falling back to fresh clone"
+            cd ..
+            fresh_clone
+          fi
+        else
+          echo "No cache, cloning..."
+          fresh_clone
+        fi
+
+        NEW=$(git -C kernel_root rev-parse HEAD)
+        REMOTE=$(git ls-remote "$URL" "refs/heads/${BRANCH}" | cut -f1)
+        [ "$NEW" = "$REMOTE" ] || { echo "::error::HEAD $NEW != remote $REMOTE"; exit 1; }
+        [ -z "$(git -C kernel_root status --porcelain)" ] || { echo "::error::Working tree is dirty"; exit 1; }
+        echo "Synced to $NEW"
+
+        if [ "$OLD" != "$NEW" ] || [ "${{ steps.src-cache.outputs.cache-hit }}" = "" ]; then
+          echo "changed=true" >> $GITHUB_OUTPUT
+          git -C kernel_root reflog expire --expire=now --all
+          git -C kernel_root gc --prune=now --quiet
+        else
+          echo "changed=false" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Save kernel source cache
+      if: ${{ !inputs.UPDATE_TOOLCHAIN && steps.sync.outputs.changed == 'true' }}
+      uses: actions/cache/save@v5
+      with:
+        path: kernel_root
+        key: ${{ env.SRC_KEY }}-${{ github.run_id }}
+
+    - name: Delete old source caches
+      if: ${{ !inputs.UPDATE_TOOLCHAIN && steps.sync.outputs.changed == 'true' }}
+      continue-on-error: true
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh cache list --key "${SRC_KEY}-" --sort created_at --order desc --json id --jq '.[].id' \
+          | tail -n +2 | xargs -r -n1 gh cache delete
 
     - name: Cache Toolchain
       id: cache-toolchain
