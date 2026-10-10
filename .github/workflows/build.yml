@@ -8,7 +8,7 @@ on:
         required: true
       BRANCH:
         description: 'Kernel branch'
-        default: 'sm6225'
+        default: 'oplus'
         required: true
       DEVICE_TARGET:
         description: 'Device to build'
