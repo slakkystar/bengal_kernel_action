@@ -2,7 +2,6 @@
 
 set -e
 
-OPLUS="${OPLUS:-"true"}"
 SECONDS=0
 USER="builder"
 HOSTNAME="github-actions"
@@ -13,14 +12,7 @@ KCFLAGS_W=${KCFLAGS_W:-"false"}
 CCACHE_DIR="${HOME}/.ccache"
 CCACHE_SIZE=${CCACHE_SIZE:-"7.5G"}
 CLEAN_BUILD=${CLEAN_BUILD:-"false"}
-
-if [ "$OPLUS" == "true" ]; then
-    KERNELCODE="${KERNELCODE:-"OPlus-kernel"}"
-    export IS_OPLUS=true
-else
-    KERNELCODE="HyperKernel"
-fi
-
+KERNELCODE="HyperKernel"
 KSU="${KSU:-"true"}"
 SUSFS="${SUSFS:-"true"}"
 CIP="-cip136"
@@ -142,11 +134,6 @@ prepare_config() {
         fragments+=("arch/arm64/configs/vendor/susfs.config")
     fi
 
-    if [[ "$OPLUS" == "true" ]]; then
-        msg "Oplus build enabled: adding vendor/oplus.config fragment"
-        fragments+=("arch/arm64/configs/vendor/oplus.config")
-    fi
-
     if [[ "$APPLY_WORKAROUND" == "true" ]]; then
         local therm_disable="$OUT_DIR/disable-thermal.config"
         mkdir -p "$OUT_DIR"
@@ -207,12 +194,7 @@ else
     ZIPNAME="$KERNELCODE-vanilla-$(date '+%Y%m%d-%H%M')-$COMMIT_HASH_SHORT.zip"
 fi
 
-if [ "$OPLUS" == "true" ]; then
-# local version for OPlus
-KERNEL_LOCAL_VER="$CIP-g${COMMIT_HASH_SHORT}"
-else
 KERNEL_LOCAL_VER="-perf-g${COMMIT_HASH_6}"
-fi
 
 # kernel build flags
 BUILD_FLAGS="O=$OUT_DIR ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LOCALVERSION=$KERNEL_LOCAL_VER -j$(nproc --all)"

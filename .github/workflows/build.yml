@@ -8,7 +8,7 @@ on:
         required: true
       BRANCH:
         description: 'Kernel branch'
-        default: 'test'
+        default: 'hyper'
         required: true
       DEVICE_TARGET:
         description: 'Device to build'
@@ -21,10 +21,6 @@ on:
         default: true
       SUSFS:
         description: 'Add SuSFS support'
-        type: boolean
-        default: true
-      OPLUS:
-        description: 'Oplus build'
         type: boolean
         default: true
       APPLY_WORKAROUND:
@@ -180,8 +176,6 @@ jobs:
       id: buildKernel
       run: |
         cd kernel_root
-        KERNELCODE=$(cat ../codename 2>/dev/null || echo "kernel")
-        echo "KERNELCODE=$KERNELCODE" >> $GITHUB_ENV
 
     - name: Fetch Toolchains
       if: ${{ steps.cache-toolchain.outputs.cache-hit != 'true' || inputs.UPDATE_TOOLCHAIN }}
@@ -198,7 +192,6 @@ jobs:
         APPLY_WORKAROUND: ${{ inputs.APPLY_WORKAROUND }}
         KSU: ${{ inputs.KSU }}
         SUSFS: ${{ inputs.SUSFS }}
-        OPLUS: "${{ inputs.OPLUS }}"
         KCFLAGS_W: "${{ inputs.KCFLAGS_W }}"
         CCACHE_SIZE: "7.5G"
         CLEAN_BUILD: "false"
