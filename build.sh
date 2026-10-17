@@ -58,7 +58,7 @@ merge_kernel_configs() {
 }
 
 setup_deps() {
-    local deps_lists=(aptitude bc bison ccache cpio curl flex git lz4 perl python-is-python3 tar)
+    local deps_lists=(aptitude bc bison ccache cpio curl flex git lz4 perl python-is-python3 tar dwarves)
     sudo apt update -y
     sudo apt install "${deps_lists[@]}" -y
     sudo aptitude install libssl-dev -y
