@@ -15,7 +15,6 @@ CLEAN_BUILD=${CLEAN_BUILD:-"false"}
 KERNELCODE="HyperKernel"
 KSU="${KSU:-"true"}"
 SUSFS="${SUSFS:-"true"}"
-CIP="-cip136"
 
 export TERM=xterm
 red='\033[0;31m'
@@ -185,16 +184,15 @@ fi
 msg "KCFLAGS: $KCFLAGS"
 
 COMMIT_COUNT=$(git rev-list --count HEAD 2>/dev/null || echo "0")
-COMMIT_HASH_6=$(git rev-parse --short=6 HEAD 2>/dev/null || echo "untracked")
-COMMIT_HASH_SHORT=$(git rev-parse --short HEAD 2>/dev/null || echo "untracked")
+COMMIT_HASH_12=$(git rev-parse --short=12 HEAD 2>/dev/null || echo "untracked")
 
 if [ "$IS_KSU_ENABLED" = "true" ]; then
-    ZIPNAME="$KERNELCODE-KSU-$(date '+%Y%m%d-%H%M')-$COMMIT_HASH_SHORT.zip"
+    ZIPNAME="$KERNELCODE-KSU-$(date '+%Y%m%d-%H%M')-$COMMIT_HASH_12.zip"
 else
-    ZIPNAME="$KERNELCODE-vanilla-$(date '+%Y%m%d-%H%M')-$COMMIT_HASH_SHORT.zip"
+    ZIPNAME="$KERNELCODE-vanilla-$(date '+%Y%m%d-%H%M')-$COMMIT_HASH_12zip"
 fi
 
-KERNEL_LOCAL_VER="-perf-g${COMMIT_HASH_6}"
+KERNEL_LOCAL_VER="-perf-g${COMMIT_HASH_12}"
 
 # kernel build flags
 BUILD_FLAGS="O=$OUT_DIR ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LOCALVERSION=$KERNEL_LOCAL_VER -j$(nproc --all)"
