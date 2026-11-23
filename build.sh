@@ -9,6 +9,7 @@ HOSTNAME="github-actions"
 DEVICE_TARGET=${DEVICE_TARGET:-"chime"}
 TC_DIR="$HOME/clang-22"
 OUT_DIR="$(pwd)/out"
+BUILD_LOG="${BUILD_LOG:-"$OUT_DIR/build.log"}"
 KCFLAGS_W=${KCFLAGS_W:-"false"}
 CCACHE_DIR="${HOME}/.ccache"
 CCACHE_SIZE=${CCACHE_SIZE:-"7.5G"}
@@ -35,6 +36,11 @@ msg() { echo -e "${blue}INFO: ${reset}$1"; }
 error() {
     echo -e "${red}ERROR: ${reset}$1"
     exit 1
+}
+
+filter_build_output() {
+    awk 'BEGIN { IGNORECASE = 1 }
+         /error|warning|fatal|undefined reference|section mismatch|modpost|make.*\*\*\*/ { print; fflush() }'
 }
 
 merge_kernel_configs() {
@@ -233,8 +239,14 @@ msg "Starting compilation for $DEVICE_TARGET..."
 
 prepare_config
 
-msg "Building kernel..."
-make $BUILD_FLAGS
+msg "Building kernel... full log: $BUILD_LOG"
+set +e
+make $BUILD_FLAGS 2>&1 | tee "$BUILD_LOG" | filter_build_output
+BUILD_STATUS=${PIPESTATUS[0]}
+set -e
+if [ "$BUILD_STATUS" -ne 0 ]; then
+    error "Compilation failed! Full log: $BUILD_LOG"
+fi
 
 if [ -f "$OUT_DIR/arch/arm64/boot/Image.gz" ]; then
     msg "Kernel compiled successfully! Packaging..."
